@@ -245,16 +245,16 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string }) => void 
       >
         <div className="text-center mb-8">
           {/* Company Logo */}
-          <div className="inline-flex items-center justify-center w-28 h-28 bg-white rounded-2xl mb-6 shadow-xl overflow-hidden border border-[#141414]/5 transition-transform hover:scale-105 duration-300">
+          <div className="inline-flex items-center justify-center w-80 h-20 bg-white rounded-3xl mb-6 shadow-2xl overflow-hidden border border-[#141414]/5 transition-transform hover:scale-105 duration-300">
             <img 
-              src="https://media.licdn.com/dms/image/v2/C4D0BAQFvqaV4vO2ttg/company-logo_200_200/company-logo_200_200/0/1642152797948?e=2147483647&v=beta&t=sXhhggFx6QopF7q1j7hbUbdf72h5n58sIczZTq6E2Ps" 
+              src="https://raw.githubusercontent.com/sakthigokul/STM-ENGINEERING/7c02d0f529c7381d2e1ae1ca5dd2af8bc85709f6/stm_logo.jpg" 
               alt="STM Engineering Logo" 
-              className="w-full h-full object-contain p-1"
+              className="w-full h-full object-contain p-2"
               referrerPolicy="no-referrer"
               onError={(e) => {
-                // Fallback if the OneDrive link doesn't resolve as a direct image
+                // Fallback if the link doesn't resolve as a direct image
                 e.currentTarget.style.display = 'none';
-                e.currentTarget.parentElement!.innerHTML = '<div class="flex flex-col items-center justify-center h-full w-full bg-[#141414] text-white italic font-black text-xl">STM Engg</div>';
+                e.currentTarget.parentElement!.innerHTML = '<div class="flex flex-col items-center justify-center h-full w-full bg-[#141414] text-white italic font-black text-2xl">STM Engg</div>';
               }}
             />
           </div>
