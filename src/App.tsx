@@ -995,23 +995,35 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
     const method = editingEmployee?.id ? 'PUT' : 'POST';
     const url = editingEmployee?.id ? `/api/employees/${editingEmployee.id}` : '/api/employees';
 
-    // Ensure username and password are set
+    // Ensure username and password are set if they are missing
+    const generatedUsername = editingEmployee?.username || (editingEmployee?.name ? editingEmployee.name.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000) : 'user' + Math.floor(Math.random() * 1000));
+    const generatedPassword = editingEmployee?.password || 'stm' + Math.floor(Math.random() * 10000);
+
     const payload = { 
       ...editingEmployee, 
       is_active: editingEmployee?.is_active ?? 1,
-      username: editingEmployee?.username || editingEmployee?.name?.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000),
-      password: editingEmployee?.password || 'stm' + Math.floor(Math.random() * 10000)
+      username: generatedUsername,
+      password: generatedPassword
     };
 
-    await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save employee');
+      }
 
-    setIsModalOpen(false);
-    setEditingEmployee(null);
-    onUpdate();
+      setIsModalOpen(false);
+      setEditingEmployee(null);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+      alert('Error saving employee. Please try again.');
+    }
   };
 
   const toggleStatus = async (emp: Employee) => {
@@ -1072,7 +1084,7 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
               <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Passport</th>
               <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Visa Details</th>
               <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Visa Expiry</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Insurance Expiry</th>
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Credentials</th>
               <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50 text-right">Actions</th>
             </tr>
           </thead>
@@ -1101,7 +1113,16 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
                       {emp.visa_expiry}
                     </span>
                   </td>
-                  <td className="p-4 text-sm">{emp.insurance_expiry}</td>
+                  <td className="p-4 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 w-fit">
+                        <UserIcon size={10} /> {emp.username || 'N/A'}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100 w-fit">
+                        <Lock size={10} /> {emp.password || 'N/A'}
+                      </div>
+                    </div>
+                  </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button 

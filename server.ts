@@ -94,13 +94,13 @@ migrations.forEach(m => {
 const employeeCount = db.prepare("SELECT COUNT(*) as count FROM employees").get() as { count: number };
 if (employeeCount.count === 0) {
   const insertEmployee = db.prepare(`
-    INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
   `);
   
-  insertEmployee.run("John Doe", "E1234567", "123 Jurong East, Singapore", "AIA Health Plus", "2026-03-01", "Work Permit", "2026-02-25", 3500);
-  insertEmployee.run("Jane Smith", "E7654321", "456 Tampines St, Singapore", "Prudential Life", "2026-05-15", "S-Pass", "2027-01-10", 4200);
-  insertEmployee.run("Ali Hassan", "E9988776", "789 Woodlands Dr, Singapore", "Great Eastern", "2026-02-22", "Work Permit", "2026-02-23", 2800);
+  insertEmployee.run("John Doe", "E1234567", "123 Jurong East, Singapore", "AIA Health Plus", "2026-03-01", "Work Permit", "2026-02-25", 3500, "john", "john123");
+  insertEmployee.run("Jane Smith", "E7654321", "456 Tampines St, Singapore", "Prudential Life", "2026-05-15", "S-Pass", "2027-01-10", 4200, "jane", "jane123");
+  insertEmployee.run("Ali Hassan", "E9988776", "789 Woodlands Dr, Singapore", "Great Eastern", "2026-02-22", "Work Permit", "2026-02-23", 2800, "ali", "ali123");
 }
 
 // Seed admin user independently
