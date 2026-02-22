@@ -16,28 +16,33 @@ import {
   Save,
   LogOut,
   Lock,
-  User,
+  User as UserIcon,
   BarChart,
   Download,
   UserMinus,
   UserCheck,
-  History
+  History,
+  Camera,
+  Upload,
+  CheckCircle,
+  Clock3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import type { Employee, AttendanceRecord, SalaryPayment, ExpiryNotification } from './types';
+import type { Employee, AttendanceRecord, SalaryPayment, ExpiryNotification, Invoice, User } from './types';
 
-type Tab = 'dashboard' | 'employees' | 'attendance' | 'payroll' | 'tracker';
+type Tab = 'dashboard' | 'employees' | 'attendance' | 'payroll' | 'tracker' | 'invoices';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([]);
   const [notifications, setNotifications] = useState<ExpiryNotification[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,17 +52,19 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [empRes, attRes, salRes, notRes] = await Promise.all([
+      const [empRes, attRes, salRes, notRes, invRes] = await Promise.all([
         fetch('/api/employees'),
-        fetch('/api/attendance'),
+        fetch('/api/attendance' + (user?.role === 'employee' ? `?employee_id=${user.id}` : '')),
         fetch('/api/salary'),
-        fetch('/api/notifications')
+        fetch('/api/notifications'),
+        fetch('/api/invoices' + (user?.role === 'employee' ? `?employee_id=${user.id}` : ''))
       ]);
       
       setEmployees(await empRes.json());
       setAttendance(await attRes.json());
       setSalaryPayments(await salRes.json());
       setNotifications(await notRes.json());
+      setInvoices(await invRes.json());
     } catch (error) {
       console.error("Failed to fetch data", error);
     } finally {
@@ -85,29 +92,39 @@ export default function App() {
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 
           />
+          {user?.role === 'admin' && (
+            <>
+              <NavItem 
+                icon={<Users size={20} />} 
+                label="Employees" 
+                active={activeTab === 'employees'} 
+                onClick={() => setActiveTab('employees')} 
+              />
+              <NavItem 
+                icon={<Calendar size={20} />} 
+                label="Attendance" 
+                active={activeTab === 'attendance'} 
+                onClick={() => setActiveTab('attendance')} 
+              />
+              <NavItem 
+                icon={<BarChart size={20} />} 
+                label="Hours Tracker" 
+                active={activeTab === 'tracker'} 
+                onClick={() => setActiveTab('tracker')} 
+              />
+              <NavItem 
+                icon={<CreditCard size={20} />} 
+                label="Payroll" 
+                active={activeTab === 'payroll'} 
+                onClick={() => setActiveTab('payroll')} 
+              />
+            </>
+          )}
           <NavItem 
-            icon={<Users size={20} />} 
-            label="Employees" 
-            active={activeTab === 'employees'} 
-            onClick={() => setActiveTab('employees')} 
-          />
-          <NavItem 
-            icon={<Calendar size={20} />} 
-            label="Attendance" 
-            active={activeTab === 'attendance'} 
-            onClick={() => setActiveTab('attendance')} 
-          />
-          <NavItem 
-            icon={<BarChart size={20} />} 
-            label="Hours Tracker" 
-            active={activeTab === 'tracker'} 
-            onClick={() => setActiveTab('tracker')} 
-          />
-          <NavItem 
-            icon={<CreditCard size={20} />} 
-            label="Payroll" 
-            active={activeTab === 'payroll'} 
-            onClick={() => setActiveTab('payroll')} 
+            icon={<FileText size={20} />} 
+            label="Invoices" 
+            active={activeTab === 'invoices'} 
+            onClick={() => setActiveTab('invoices')} 
           />
         </nav>
 
@@ -118,8 +135,8 @@ export default function App() {
                 {user?.username.charAt(0).toUpperCase()}
               </div>
               <div>
-                <p className="text-sm font-medium">{user?.username}</p>
-                <p className="text-xs text-[#141414]/50">Administrator</p>
+                <p className="text-sm font-medium">{user?.role === 'admin' ? user?.username : user?.name}</p>
+                <p className="text-xs text-[#141414]/50 capitalize">{user?.role}</p>
               </div>
             </div>
             <button 
@@ -171,11 +188,16 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'dashboard' && <Dashboard notifications={notifications} employees={employees} attendance={attendance} />}
-              {activeTab === 'employees' && <EmployeeManagement employees={employees} onUpdate={fetchData} />}
-              {activeTab === 'attendance' && <AttendanceManagement employees={employees} attendance={attendance} onUpdate={fetchData} />}
-              {activeTab === 'tracker' && <HoursTracker />}
-              {activeTab === 'payroll' && <PayrollManagement employees={employees} payments={salaryPayments} onUpdate={fetchData} />}
+              {activeTab === 'dashboard' && (
+                user?.role === 'admin' 
+                  ? <Dashboard notifications={notifications} employees={employees} attendance={attendance} />
+                  : <EmployeeDashboard user={user} attendance={attendance} onUpdate={fetchData} />
+              )}
+              {activeTab === 'employees' && user?.role === 'admin' && <EmployeeManagement employees={employees} onUpdate={fetchData} />}
+              {activeTab === 'attendance' && user?.role === 'admin' && <AttendanceManagement employees={employees} attendance={attendance} onUpdate={fetchData} />}
+              {activeTab === 'tracker' && user?.role === 'admin' && <HoursTracker />}
+              {activeTab === 'payroll' && user?.role === 'admin' && <PayrollManagement employees={employees} payments={salaryPayments} onUpdate={fetchData} />}
+              {activeTab === 'invoices' && <InvoiceManagement user={user} invoices={invoices} onUpdate={fetchData} />}
             </motion.div>
           )}
         </AnimatePresence>
@@ -202,7 +224,523 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
 
 // --- Components ---
 
-function LoginPage({ onLogin }: { onLogin: (user: { username: string }) => void }) {
+function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attendance: AttendanceRecord[], onUpdate: () => void }) {
+  const [isClockingIn, setIsClockingIn] = useState(false);
+  const [isClockingOut, setIsClockingOut] = useState(false);
+  const [location, setLocation] = useState('');
+  const [role, setRole] = useState('');
+  const [description, setDescription] = useState('');
+  const [image, setImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const activeRecord = attendance.find(a => a.employee_id === user.id && a.clock_in_time && !a.clock_out_time);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleClockIn = async () => {
+    if (!location || !role || !image) {
+      alert("Please provide location, role and before-work image.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetch('/api/attendance/clock-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: user.id,
+          date: new Date().toISOString().split('T')[0],
+          location,
+          role,
+          clock_in_time: new Date().toLocaleTimeString(),
+          before_image: image,
+          work_description: description
+        })
+      });
+      setIsClockingIn(false);
+      setImage(null);
+      setLocation('');
+      setRole('');
+      setDescription('');
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (!image || !activeRecord) {
+      alert("Please provide after-work image.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const clockOutTime = new Date().toLocaleTimeString();
+      // Simple hours calculation
+      const start = new Date(`2000-01-01 ${activeRecord.clock_in_time}`);
+      const end = new Date(`2000-01-01 ${clockOutTime}`);
+      const hours = Math.abs(end.getTime() - start.getTime()) / 36e5;
+
+      await fetch('/api/attendance/clock-out', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: activeRecord.id,
+          clock_out_time: clockOutTime,
+          after_image: image,
+          hours_worked: Number(hours.toFixed(2))
+        })
+      });
+      setIsClockingOut(false);
+      setImage(null);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-[#141414]/10 shadow-sm">
+          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <Clock size={24} /> Attendance Status
+          </h3>
+          
+          {activeRecord ? (
+            <div className="space-y-6">
+              <div className="p-6 bg-emerald-50 rounded-3xl border border-emerald-100">
+                <p className="text-emerald-800 font-bold flex items-center gap-2">
+                  <CheckCircle size={18} /> Currently Clocked In
+                </p>
+                <p className="text-sm text-emerald-600 mt-1">Started at {activeRecord.clock_in_time} today</p>
+              </div>
+              
+              {!isClockingOut ? (
+                <button 
+                  onClick={() => setIsClockingOut(true)}
+                  className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+                >
+                  Clock Out
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#141414]/50 uppercase">After Work Image</label>
+                    <div className="flex items-center justify-center w-full">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-[#141414]/10 border-dashed rounded-2xl cursor-pointer hover:bg-[#F5F5F4] transition-all">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          {image ? (
+                            <img src={image} className="h-24 w-24 object-cover rounded-lg" />
+                          ) : (
+                            <>
+                              <Camera className="w-8 h-8 mb-2 text-[#141414]/30" />
+                              <p className="text-xs text-[#141414]/50">Click to upload photo</p>
+                            </>
+                          )}
+                        </div>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setIsClockingOut(false)}
+                      className="flex-1 py-3 border border-[#141414]/10 rounded-xl font-bold text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleClockOut}
+                      disabled={loading}
+                      className="flex-1 py-3 bg-[#141414] text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                    >
+                      {loading ? 'Processing...' : 'Confirm Clock Out'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="p-6 bg-[#F5F5F4] rounded-3xl border border-[#141414]/5">
+                <p className="text-[#141414]/50 font-bold flex items-center gap-2">
+                  <Clock3 size={18} /> Not Clocked In
+                </p>
+                <p className="text-sm text-[#141414]/40 mt-1">Ready to start your shift?</p>
+              </div>
+
+              {!isClockingIn ? (
+                <button 
+                  onClick={() => setIsClockingIn(true)}
+                  className="w-full py-4 bg-[#141414] text-white rounded-2xl font-bold hover:bg-[#141414]/90 transition-all shadow-lg"
+                >
+                  Clock In
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#141414]/50 uppercase">Location</label>
+                      <input 
+                        className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none"
+                        placeholder="Site name"
+                        value={location}
+                        onChange={e => setLocation(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#141414]/50 uppercase">Role</label>
+                      <input 
+                        className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none"
+                        placeholder="e.g. Electrical"
+                        value={role}
+                        onChange={e => setRole(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#141414]/50 uppercase">Work Description</label>
+                    <textarea 
+                      className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none h-20"
+                      placeholder="What are you working on?"
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-[#141414]/50 uppercase">Before Work Image</label>
+                    <div className="flex items-center justify-center w-full">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-[#141414]/10 border-dashed rounded-2xl cursor-pointer hover:bg-[#F5F5F4] transition-all">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          {image ? (
+                            <img src={image} className="h-24 w-24 object-cover rounded-lg" />
+                          ) : (
+                            <>
+                              <Camera className="w-8 h-8 mb-2 text-[#141414]/30" />
+                              <p className="text-xs text-[#141414]/50">Click to upload photo</p>
+                            </>
+                          )}
+                        </div>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setIsClockingIn(false)}
+                      className="flex-1 py-3 border border-[#141414]/10 rounded-xl font-bold text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleClockIn}
+                      disabled={loading}
+                      className="flex-1 py-3 bg-[#141414] text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                    >
+                      {loading ? 'Processing...' : 'Confirm Clock In'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white p-8 rounded-[2.5rem] border border-[#141414]/10 shadow-sm">
+          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <History size={24} /> Recent Attendance Logs
+          </h3>
+          <div className="space-y-4">
+            {attendance.slice(0, 5).map((record, idx) => (
+              <div key={idx} className="p-4 rounded-3xl bg-[#F5F5F4]/50 border border-[#141414]/5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-bold">{record.date}</p>
+                    <p className="text-xs text-[#141414]/50">{record.location} • {record.role}</p>
+                  </div>
+                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
+                    record.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                  }`}>
+                    {record.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  {record.before_image && <img src={record.before_image} className="w-12 h-12 object-cover rounded-lg border border-white shadow-sm" />}
+                  {record.after_image && <img src={record.after_image} className="w-12 h-12 object-cover rounded-lg border border-white shadow-sm" />}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices: Invoice[], onUpdate: () => void }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newInvoice, setNewInvoice] = useState<Partial<Invoice>>({
+    customer_name: '',
+    amount: 0,
+    description: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [loading, setLoading] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newInvoice, employee_id: user.id })
+      });
+      setIsModalOpen(false);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprove = async (id: number) => {
+    try {
+      await fetch(`/api/invoices/${id}/approve`, { method: 'PUT' });
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const downloadInvoice = async (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    // Small delay for modal to render
+    setTimeout(async () => {
+      const element = document.getElementById('invoice-content');
+      if (!element) return;
+      
+      try {
+        const canvas = await html2canvas(element, { 
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff"
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`Invoice_${invoice.customer_name}_${invoice.date}.pdf`);
+      } catch (error) {
+        console.error("Invoice generation failed", error);
+      } finally {
+        setSelectedInvoice(null);
+      }
+    }, 500);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-lg">Invoices</h3>
+        {user.role === 'employee' && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all"
+          >
+            <Plus size={18} /> Create Invoice
+          </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-[#141414]/10 overflow-hidden shadow-sm">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#F5F5F4] border-b border-[#141414]/10">
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Date</th>
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Customer</th>
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Amount</th>
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Status</th>
+              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#141414]/5">
+            {invoices.map((inv) => (
+              <tr key={inv.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
+                <td className="p-4 text-sm">{inv.date}</td>
+                <td className="p-4 text-sm font-medium">{inv.customer_name}</td>
+                <td className="p-4 text-sm font-bold">SGD {inv.amount.toLocaleString()}</td>
+                <td className="p-4">
+                  <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
+                    inv.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                  }`}>
+                    {inv.status}
+                  </span>
+                </td>
+                <td className="p-4 text-right space-x-2">
+                  {user.role === 'admin' && inv.status === 'pending' && (
+                    <button 
+                      onClick={() => handleApprove(inv.id)}
+                      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                      title="Approve"
+                    >
+                      <CheckCircle size={18} />
+                    </button>
+                  )}
+                  {inv.status === 'approved' && (
+                    <button 
+                      onClick={() => downloadInvoice(inv)}
+                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      title="Download"
+                    >
+                      <Download size={18} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Create Invoice Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-[#141414]/10 flex justify-between items-center">
+                <h3 className="text-xl font-bold">Create New Invoice</h3>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-[#F5F5F4] rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleSave} className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#141414]/50 uppercase">Customer Name</label>
+                  <input 
+                    required
+                    className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none"
+                    value={newInvoice.customer_name}
+                    onChange={e => setNewInvoice({...newInvoice, customer_name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#141414]/50 uppercase">Amount (SGD)</label>
+                  <input 
+                    type="number"
+                    required
+                    className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none"
+                    value={newInvoice.amount}
+                    onChange={e => setNewInvoice({...newInvoice, amount: Number(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#141414]/50 uppercase">Description</label>
+                  <textarea 
+                    required
+                    className="w-full p-3 bg-[#F5F5F4] rounded-xl focus:outline-none h-24"
+                    value={newInvoice.description}
+                    onChange={e => setNewInvoice({...newInvoice, description: e.target.value})}
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-[#141414] text-white rounded-2xl font-bold hover:bg-[#141414]/90 transition-all shadow-lg disabled:opacity-50"
+                >
+                  {loading ? 'Creating...' : 'Create Invoice'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Hidden Invoice for PDF Generation */}
+      {selectedInvoice && (
+        <div className="fixed -left-[9999px] top-0">
+          <div id="invoice-content" style={{ width: '210mm', minHeight: '297mm', backgroundColor: '#ffffff', color: '#000000', padding: '20mm' }}>
+            <div className="flex justify-between items-start border-b-4 border-black pb-8 mb-8">
+              <div>
+                <h1 className="text-4xl font-black uppercase tracking-tighter">STM Engineering</h1>
+                <p className="text-sm text-gray-600">123 Engineering Way, Singapore 123456</p>
+                <p className="text-sm text-gray-600">Tel: +65 6789 0123 | Email: info@stm-engg.com.sg</p>
+              </div>
+              <div className="text-right">
+                <h2 className="text-5xl font-black uppercase text-gray-200">INVOICE</h2>
+                <p className="text-lg font-bold mt-2">#{selectedInvoice.id.toString().padStart(6, '0')}</p>
+                <p className="text-sm text-gray-500">Date: {selectedInvoice.date}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-12 mb-12">
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase mb-2">Bill To:</p>
+                <p className="text-xl font-bold">{selectedInvoice.customer_name}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-bold text-gray-400 uppercase mb-2">Service By:</p>
+                <p className="text-lg font-bold">{selectedInvoice.employee_name}</p>
+              </div>
+            </div>
+
+            <div className="border border-black rounded-3xl overflow-hidden mb-12">
+              <div className="bg-gray-100 p-6 flex justify-between font-bold text-sm uppercase tracking-wider border-b border-black">
+                <span>Description</span>
+                <span>Amount (SGD)</span>
+              </div>
+              <div className="p-8 min-h-[300px]">
+                <div className="flex justify-between text-lg">
+                  <span className="whitespace-pre-wrap">{selectedInvoice.description}</span>
+                  <span className="font-bold">{selectedInvoice.amount.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="bg-black text-white p-8 flex justify-between items-center">
+                <span className="text-xl font-bold uppercase tracking-widest">Total Amount</span>
+                <span className="text-4xl font-black">SGD {selectedInvoice.amount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-12 border-t border-gray-100">
+              <p className="text-sm font-bold mb-2">Payment Terms:</p>
+              <p className="text-xs text-gray-500">Please make payment within 30 days. Bank transfer to STM Engineering, OCBC Bank A/C: 123-456789-001.</p>
+              <div className="mt-12 flex justify-between items-end">
+                <div className="w-48 h-12 border-b border-black"></div>
+                <p className="text-[10px] text-gray-400 uppercase font-bold">Authorized Signature</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -276,7 +814,7 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string }) => void 
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#141414]/50 uppercase px-1">Username</label>
             <div className="relative">
-              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[#141414]/30" size={18} />
+              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-[#141414]/30" size={18} />
               <input 
                 type="text"
                 required
@@ -457,10 +995,18 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
     const method = editingEmployee?.id ? 'PUT' : 'POST';
     const url = editingEmployee?.id ? `/api/employees/${editingEmployee.id}` : '/api/employees';
 
+    // Ensure username and password are set
+    const payload = { 
+      ...editingEmployee, 
+      is_active: editingEmployee?.is_active ?? 1,
+      username: editingEmployee?.username || editingEmployee?.name?.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 1000),
+      password: editingEmployee?.password || 'stm' + Math.floor(Math.random() * 10000)
+    };
+
     await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...editingEmployee, is_active: editingEmployee?.is_active ?? 1 })
+      body: JSON.stringify(payload)
     });
 
     setIsModalOpen(false);
@@ -671,6 +1217,33 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
                     onChange={e => setEditingEmployee({...editingEmployee, base_salary: Number(e.target.value)})}
                   />
                 </div>
+
+                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 space-y-4">
+                  <h4 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                    <Lock size={16} /> Login Credentials
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-indigo-600 uppercase">Username</label>
+                      <input 
+                        className="w-full p-3 bg-white border border-indigo-100 rounded-xl focus:outline-none"
+                        value={editingEmployee?.username || ''}
+                        onChange={e => setEditingEmployee({...editingEmployee, username: e.target.value})}
+                        placeholder="Auto-generated if empty"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-indigo-600 uppercase">Password</label>
+                      <input 
+                        className="w-full p-3 bg-white border border-indigo-100 rounded-xl focus:outline-none"
+                        value={editingEmployee?.password || ''}
+                        onChange={e => setEditingEmployee({...editingEmployee, password: e.target.value})}
+                        placeholder="Auto-generated if empty"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="pt-4">
                   <button type="submit" className="w-full bg-[#141414] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#141414]/90 transition-all">
                     <Save size={20} /> Save Employee Details
@@ -702,6 +1275,15 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
     });
     setIsModalOpen(false);
     onUpdate();
+  };
+
+  const handleApprove = async (id: number) => {
+    try {
+      await fetch(`/api/attendance/${id}/approve`, { method: 'PUT' });
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const activeEmployees = employees.filter(e => e.is_active === 1);
@@ -750,6 +1332,8 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Role</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Hours</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Location</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Images</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50 text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#141414]/5">
@@ -765,9 +1349,49 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                           <Clock size={14} className="text-[#141414]/30" />
                           {record.hours_worked} hrs
                         </td>
-                        <td className="p-4 text-sm text-[#141414]/60 flex items-center gap-2">
-                          <MapPin size={14} className="text-[#141414]/30" />
-                          {record.location}
+                        <td className="p-4 text-sm text-[#141414]/60">
+                          <div className="flex items-center gap-2">
+                            <MapPin size={14} className="text-[#141414]/30" />
+                            {record.location}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex gap-2">
+                            {record.before_image && (
+                              <div className="group relative">
+                                <img src={record.before_image} className="w-8 h-8 object-cover rounded-lg border border-white shadow-sm cursor-pointer" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50">
+                                  <img src={record.before_image} className="w-48 h-48 object-cover rounded-2xl shadow-2xl border-4 border-white" />
+                                </div>
+                              </div>
+                            )}
+                            {record.after_image && (
+                              <div className="group relative">
+                                <img src={record.after_image} className="w-8 h-8 object-cover rounded-lg border border-white shadow-sm cursor-pointer" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50">
+                                  <img src={record.after_image} className="w-48 h-48 object-cover rounded-2xl shadow-2xl border-4 border-white" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-3">
+                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
+                              record.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                            }`}>
+                              {record.status}
+                            </span>
+                            {record.status === 'pending' && (
+                              <button 
+                                onClick={() => handleApprove(record.id)}
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                title="Approve Attendance"
+                              >
+                                <CheckCircle size={16} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -986,19 +1610,16 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
   };
 
   const downloadPDF = async () => {
-    const element = document.getElementById('payslip-content');
+    const element = document.getElementById('payslip-print-content');
     if (!element) return;
     
     setIsDownloading(true);
     try {
-      // Small delay to ensure rendering is complete
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const canvas = await html2canvas(element, { 
         scale: 2,
         useCORS: true,
-        logging: false,
-        allowTaint: true,
         backgroundColor: "#ffffff"
       });
       const imgData = canvas.toDataURL('image/png');
@@ -1149,57 +1770,20 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl p-8"
             >
-              <div id="payslip-content" style={{ backgroundColor: '#ffffff', color: '#000000' }} className="p-8">
-                <div className="flex justify-between items-start border-b-2 border-[#000000] pb-6 mb-6">
+              <div className="p-8 bg-[#F5F5F4] rounded-2xl border border-[#141414]/5">
+                <div className="flex justify-between items-start border-b border-[#141414]/10 pb-4 mb-4">
                   <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter text-[#000000]">STM Engineering</h2>
-                    <p className="text-xs text-[#666666]">123 Engineering Way, Singapore 123456</p>
+                    <h2 className="text-xl font-bold uppercase tracking-tight">STM Engineering</h2>
+                    <p className="text-xs text-[#141414]/50">Payslip Preview</p>
                   </div>
                   <div className="text-right">
-                    <h3 className="text-xl font-bold uppercase text-[#000000]">Payslip</h3>
-                    <p className="text-sm font-mono text-[#999999]">#{selectedPayment.id.toString().padStart(6, '0')}</p>
+                    <p className="text-sm font-bold">{selectedPayment.employee_name}</p>
+                    <p className="text-xs text-[#141414]/50">{selectedPayment.month}/{selectedPayment.year}</p>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-8 mb-8">
-                  <div>
-                    <p className="text-[10px] font-bold text-[#999999] uppercase mb-1">Employee Details</p>
-                    <p className="font-bold text-lg text-[#000000]">{selectedPayment.employee_name}</p>
-                    <p className="text-sm text-[#333333]">Period: {selectedPayment.month}/{selectedPayment.year}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-[#999999] uppercase mb-1">Payment Date</p>
-                    <p className="font-bold text-[#000000]">{selectedPayment.payment_date}</p>
-                  </div>
-                </div>
-
-                <div className="border border-[#eeeeee] rounded-2xl overflow-hidden mb-8">
-                  <div className="bg-[#f5f5f5] p-4 flex justify-between font-bold text-xs uppercase tracking-wider text-[#000000]">
-                    <span>Description</span>
-                    <span>Amount (SGD)</span>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div className="flex justify-between text-sm text-[#000000]">
-                      <span>Basic Salary</span>
-                      <span>{selectedPayment.amount.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-[#000000]">
-                      <span>Allowances</span>
-                      <span>0.00</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-[#ff0000]">
-                      <span>Deductions</span>
-                      <span>(0.00)</span>
-                    </div>
-                  </div>
-                  <div className="bg-[#000000] text-[#ffffff] p-4 flex justify-between font-bold">
-                    <span>NET PAYABLE</span>
-                    <span>SGD {selectedPayment.amount.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-[#999999] italic">
-                  This is a computer-generated payslip and does not require a signature.
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Net Salary</span>
+                  <span className="text-xl font-black">SGD {selectedPayment.amount.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -1222,6 +1806,77 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
           </div>
         )}
       </AnimatePresence>
+
+      {/* Hidden Payslip for PDF Generation */}
+      {selectedPayment && (
+        <div className="fixed -left-[9999px] top-0">
+          <div id="payslip-print-content" style={{ width: '210mm', minHeight: '297mm', backgroundColor: '#ffffff', color: '#000000', padding: '20mm' }}>
+            <div className="flex justify-between items-start border-b-4 border-black pb-8 mb-8">
+              <div>
+                <h1 className="text-4xl font-black uppercase tracking-tighter">STM Engineering</h1>
+                <p className="text-sm text-gray-600">123 Engineering Way, Singapore 123456</p>
+                <p className="text-sm text-gray-600">Tel: +65 6789 0123 | Email: info@stm-engg.com.sg</p>
+              </div>
+              <div className="text-right">
+                <h2 className="text-5xl font-black uppercase text-gray-200">PAYSLIP</h2>
+                <p className="text-lg font-bold mt-2">#{selectedPayment.id.toString().padStart(6, '0')}</p>
+                <p className="text-sm text-gray-500">Date: {selectedPayment.payment_date}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-12 mb-12">
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase mb-2">Employee Details:</p>
+                <p className="text-xl font-bold">{selectedPayment.employee_name}</p>
+                <p className="text-sm text-gray-600">Period: {selectedPayment.month}/{selectedPayment.year}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-bold text-gray-400 uppercase mb-2">Payment Mode:</p>
+                <p className="text-lg font-bold">Bank Transfer</p>
+              </div>
+            </div>
+
+            <div className="border border-black rounded-3xl overflow-hidden mb-12">
+              <div className="bg-gray-100 p-6 flex justify-between font-bold text-sm uppercase tracking-wider border-b border-black">
+                <span>Description</span>
+                <span>Amount (SGD)</span>
+              </div>
+              <div className="p-8 min-h-[300px] space-y-6">
+                <div className="flex justify-between text-lg">
+                  <span>Basic Salary</span>
+                  <span className="font-bold">{selectedPayment.amount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-lg">
+                  <span>Allowances</span>
+                  <span className="font-bold">0.00</span>
+                </div>
+                <div className="flex justify-between text-lg text-red-600">
+                  <span>Deductions</span>
+                  <span className="font-bold">(0.00)</span>
+                </div>
+              </div>
+              <div className="bg-black text-white p-8 flex justify-between items-center">
+                <span className="text-xl font-bold uppercase tracking-widest">Net Salary Payable</span>
+                <span className="text-4xl font-black">SGD {selectedPayment.amount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-12 border-t border-gray-100">
+              <p className="text-xs text-gray-400 italic">This is a computer-generated document and does not require a physical signature.</p>
+              <div className="mt-12 flex justify-between items-end">
+                <div className="text-center">
+                  <div className="w-48 h-12 border-b border-black mb-2"></div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Employee Signature</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-48 h-12 border-b border-black mb-2"></div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Authorized Signature</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,7 +21,9 @@ db.exec(`
     visa_details TEXT,
     visa_expiry DATE,
     base_salary REAL DEFAULT 0,
-    is_active INTEGER DEFAULT 1
+    is_active INTEGER DEFAULT 1,
+    username TEXT UNIQUE,
+    password TEXT
   );
 
   CREATE TABLE IF NOT EXISTS attendance (
@@ -31,6 +33,12 @@ db.exec(`
     hours_worked REAL,
     location TEXT,
     role TEXT,
+    clock_in_time TEXT,
+    clock_out_time TEXT,
+    before_image TEXT,
+    after_image TEXT,
+    status TEXT DEFAULT 'pending',
+    work_description TEXT,
     FOREIGN KEY(employee_id) REFERENCES employees(id)
   );
 
@@ -49,21 +57,38 @@ db.exec(`
     username TEXT UNIQUE,
     password TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER,
+    customer_name TEXT,
+    amount REAL,
+    description TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    status TEXT DEFAULT 'pending',
+    FOREIGN KEY(employee_id) REFERENCES employees(id)
+  );
 `);
 
-// Migration: Add is_active if it doesn't exist
-try {
-  db.prepare("ALTER TABLE employees ADD COLUMN is_active INTEGER DEFAULT 1").run();
-} catch (e) {
-  // Column already exists or other error
-}
+// Migration: Add new columns if they don't exist
+const migrations = [
+  "ALTER TABLE employees ADD COLUMN is_active INTEGER DEFAULT 1",
+  "ALTER TABLE employees ADD COLUMN username TEXT UNIQUE",
+  "ALTER TABLE employees ADD COLUMN password TEXT",
+  "ALTER TABLE attendance ADD COLUMN role TEXT",
+  "ALTER TABLE attendance ADD COLUMN clock_in_time TEXT",
+  "ALTER TABLE attendance ADD COLUMN clock_out_time TEXT",
+  "ALTER TABLE attendance ADD COLUMN before_image TEXT",
+  "ALTER TABLE attendance ADD COLUMN after_image TEXT",
+  "ALTER TABLE attendance ADD COLUMN status TEXT DEFAULT 'pending'",
+  "ALTER TABLE attendance ADD COLUMN work_description TEXT"
+];
 
-// Migration: Add role if it doesn't exist
-try {
-  db.prepare("ALTER TABLE attendance ADD COLUMN role TEXT").run();
-} catch (e) {
-  // Column already exists
-}
+migrations.forEach(m => {
+  try {
+    db.prepare(m).run();
+  } catch (e) {}
+});
 
 // Seed data if empty
 const employeeCount = db.prepare("SELECT COUNT(*) as count FROM employees").get() as { count: number };
@@ -91,12 +116,20 @@ async function startServer() {
   // Auth Route
   app.post("/api/login", (req, res) => {
     const { username, password } = req.body;
-    const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password);
-    if (user) {
-      res.json({ success: true, user: { username: (user as any).username } });
-    } else {
-      res.status(401).json({ success: false, message: "Invalid credentials" });
+    
+    // Check admin
+    const admin = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password);
+    if (admin) {
+      return res.json({ success: true, user: { username: (admin as any).username, role: 'admin' } });
     }
+
+    // Check employee
+    const employee = db.prepare("SELECT * FROM employees WHERE username = ? AND password = ? AND is_active = 1").get(username, password);
+    if (employee) {
+      return res.json({ success: true, user: { id: (employee as any).id, name: (employee as any).name, username: (employee as any).username, role: 'employee' } });
+    }
+
+    res.status(401).json({ success: false, message: "Invalid credentials" });
   });
 
   // API Routes
@@ -115,42 +148,98 @@ async function startServer() {
   });
 
   app.post("/api/employees", (req, res) => {
-    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary } = req.body;
+    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, username, password } = req.body;
     const info = db.prepare(`
-      INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary);
+      INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, username, password);
     res.json({ id: info.lastInsertRowid });
   });
 
   app.put("/api/employees/:id", (req, res) => {
     const { id } = req.params;
-    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active } = req.body;
+    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password } = req.body;
     db.prepare(`
       UPDATE employees 
-      SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?, is_active = ?
+      SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?, is_active = ?, username = ?, password = ?
       WHERE id = ?
-    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active ?? 1, id);
+    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active ?? 1, username, password, id);
     res.json({ success: true });
   });
 
   app.get("/api/attendance", (req, res) => {
-    const attendance = db.prepare(`
+    const { employee_id } = req.query;
+    let query = `
       SELECT a.*, e.name as employee_name 
       FROM attendance a 
       JOIN employees e ON a.employee_id = e.id
-      ORDER BY a.date DESC
-    `).all();
+    `;
+    const params: any[] = [];
+    if (employee_id) {
+      query += " WHERE a.employee_id = ?";
+      params.push(employee_id);
+    }
+    query += " ORDER BY a.date DESC, a.id DESC";
+    const attendance = db.prepare(query).all(...params);
     res.json(attendance);
   });
 
-  app.post("/api/attendance", (req, res) => {
-    const { employee_id, date, hours_worked, location, role } = req.body;
+  app.post("/api/attendance/clock-in", (req, res) => {
+    const { employee_id, date, location, role, clock_in_time, before_image, work_description } = req.body;
     const info = db.prepare(`
-      INSERT INTO attendance (employee_id, date, hours_worked, location, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(employee_id, date, hours_worked, location, role);
+      INSERT INTO attendance (employee_id, date, location, role, clock_in_time, before_image, work_description, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    `).run(employee_id, date, location, role, clock_in_time, before_image, work_description);
     res.json({ id: info.lastInsertRowid });
+  });
+
+  app.post("/api/attendance/clock-out", (req, res) => {
+    const { id, clock_out_time, after_image, hours_worked } = req.body;
+    db.prepare(`
+      UPDATE attendance 
+      SET clock_out_time = ?, after_image = ?, hours_worked = ?
+      WHERE id = ?
+    `).run(clock_out_time, after_image, hours_worked, id);
+    res.json({ success: true });
+  });
+
+  app.put("/api/attendance/:id/approve", (req, res) => {
+    const { id } = req.params;
+    db.prepare("UPDATE attendance SET status = 'approved' WHERE id = ?").run(id);
+    res.json({ success: true });
+  });
+
+  // Invoices
+  app.get("/api/invoices", (req, res) => {
+    const { employee_id } = req.query;
+    let query = `
+      SELECT i.*, e.name as employee_name 
+      FROM invoices i
+      JOIN employees e ON i.employee_id = e.id
+    `;
+    const params: any[] = [];
+    if (employee_id) {
+      query += " WHERE i.employee_id = ?";
+      params.push(employee_id);
+    }
+    query += " ORDER BY i.date DESC";
+    const invoices = db.prepare(query).all(...params);
+    res.json(invoices);
+  });
+
+  app.post("/api/invoices", (req, res) => {
+    const { employee_id, customer_name, amount, description, date } = req.body;
+    const info = db.prepare(`
+      INSERT INTO invoices (employee_id, customer_name, amount, description, date, status)
+      VALUES (?, ?, ?, ?, ?, 'pending')
+    `).run(employee_id, customer_name, amount, description, date);
+    res.json({ id: info.lastInsertRowid });
+  });
+
+  app.put("/api/invoices/:id/approve", (req, res) => {
+    const { id } = req.params;
+    db.prepare("UPDATE invoices SET status = 'approved' WHERE id = ?").run(id);
+    res.json({ success: true });
   });
 
   app.get("/api/monthly-hours", (req, res) => {

@@ -9,6 +9,8 @@ export interface Employee {
   visa_expiry: string;
   base_salary: number;
   is_active: number;
+  username?: string;
+  password?: string;
 }
 
 export interface AttendanceRecord {
@@ -19,6 +21,12 @@ export interface AttendanceRecord {
   hours_worked: number;
   location: string;
   role: string;
+  clock_in_time?: string;
+  clock_out_time?: string;
+  before_image?: string;
+  after_image?: string;
+  status: 'pending' | 'approved';
+  work_description?: string;
 }
 
 export interface SalaryPayment {
@@ -36,4 +44,22 @@ export interface ExpiryNotification {
   name: string;
   expiry_date: string;
   type: 'Visa' | 'Insurance';
+}
+
+export interface Invoice {
+  id: number;
+  employee_id: number;
+  employee_name?: string;
+  customer_name: string;
+  amount: number;
+  description: string;
+  date: string;
+  status: 'pending' | 'approved';
+}
+
+export interface User {
+  id?: number;
+  name?: string;
+  username: string;
+  role: 'admin' | 'employee';
 }
