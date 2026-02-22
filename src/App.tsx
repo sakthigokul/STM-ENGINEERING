@@ -1013,16 +1013,18 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
         body: JSON.stringify(payload)
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Failed to save employee');
+        throw new Error(data.message || 'Failed to save employee');
       }
 
       setIsModalOpen(false);
       setEditingEmployee(null);
       onUpdate();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Error saving employee. Please try again.');
+      alert(err.message || 'Error saving employee. Please try again.');
     }
   };
 

@@ -148,23 +148,51 @@ async function startServer() {
   });
 
   app.post("/api/employees", (req, res) => {
-    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, username, password } = req.body;
-    const info = db.prepare(`
-      INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, username, password);
-    res.json({ id: info.lastInsertRowid });
+    try {
+      const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, username, password } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ success: false, message: "Name is required" });
+      }
+
+      const info = db.prepare(`
+        INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary || 0, username, password);
+      
+      res.json({ success: true, id: info.lastInsertRowid });
+    } catch (error: any) {
+      console.error("Error creating employee:", error);
+      if (error.message.includes("UNIQUE constraint failed: employees.username")) {
+        return res.status(400).json({ success: false, message: "Username already exists" });
+      }
+      res.status(500).json({ success: false, message: error.message });
+    }
   });
 
   app.put("/api/employees/:id", (req, res) => {
-    const { id } = req.params;
-    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password } = req.body;
-    db.prepare(`
-      UPDATE employees 
-      SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?, is_active = ?, username = ?, password = ?
-      WHERE id = ?
-    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active ?? 1, username, password, id);
-    res.json({ success: true });
+    try {
+      const { id } = req.params;
+      const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active, username, password } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ success: false, message: "Name is required" });
+      }
+
+      db.prepare(`
+        UPDATE employees 
+        SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?, is_active = ?, username = ?, password = ?
+        WHERE id = ?
+      `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary || 0, is_active ?? 1, username, password, id);
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error updating employee:", error);
+      if (error.message.includes("UNIQUE constraint failed: employees.username")) {
+        return res.status(400).json({ success: false, message: "Username already exists" });
+      }
+      res.status(500).json({ success: false, message: error.message });
+    }
   });
 
   app.get("/api/attendance", (req, res) => {
