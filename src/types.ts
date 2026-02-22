@@ -8,6 +8,7 @@ export interface Employee {
   visa_details: string;
   visa_expiry: string;
   base_salary: number;
+  is_active: number;
 }
 
 export interface AttendanceRecord {

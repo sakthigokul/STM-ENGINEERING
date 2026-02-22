@@ -17,9 +17,15 @@ import {
   LogOut,
   Lock,
   User,
-  BarChart
+  BarChart,
+  Download,
+  UserMinus,
+  UserCheck,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import type { Employee, AttendanceRecord, SalaryPayment, ExpiryNotification } from './types';
 
 type Tab = 'dashboard' | 'employees' | 'attendance' | 'payroll' | 'tracker';
@@ -434,11 +440,14 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Partial<Employee> | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'active' | 'old'>('active');
 
-  const filteredEmployees = employees.filter(e => 
-    e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    e.passport_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEmployees = employees.filter(e => {
+    const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         e.passport_number.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = viewMode === 'active' ? e.is_active === 1 : e.is_active === 0;
+    return matchesSearch && matchesStatus;
+  });
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -448,7 +457,7 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
     await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editingEmployee)
+      body: JSON.stringify({ ...editingEmployee, is_active: editingEmployee?.is_active ?? 1 })
     });
 
     setIsModalOpen(false);
@@ -456,25 +465,54 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
     onUpdate();
   };
 
+  const toggleStatus = async (emp: Employee) => {
+    const newStatus = emp.is_active === 1 ? 0 : 1;
+    await fetch(`/api/employees/${emp.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...emp, is_active: newStatus })
+    });
+    onUpdate();
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#141414]/30" size={18} />
-          <input 
-            type="text" 
-            placeholder="Search employees..." 
-            className="w-full pl-10 pr-4 py-2 bg-white border border-[#141414]/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex bg-white p-1 rounded-xl border border-[#141414]/10 shadow-sm">
+          <button 
+            onClick={() => setViewMode('active')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${viewMode === 'active' ? 'bg-[#141414] text-white' : 'text-[#141414]/50 hover:bg-[#141414]/5'}`}
+          >
+            <Users size={16} /> Active Employees
+          </button>
+          <button 
+            onClick={() => setViewMode('old')}
+            className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${viewMode === 'old' ? 'bg-[#141414] text-white' : 'text-[#141414]/50 hover:bg-[#141414]/5'}`}
+          >
+            <History size={16} /> Old Employee Data
+          </button>
         </div>
-        <button 
-          onClick={() => { setEditingEmployee({}); setIsModalOpen(true); }}
-          className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all"
-        >
-          <Plus size={18} /> Add Employee
-        </button>
+
+        <div className="flex gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#141414]/30" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search employees..." 
+              className="w-full pl-10 pr-4 py-2 bg-white border border-[#141414]/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          {viewMode === 'active' && (
+            <button 
+              onClick={() => { setEditingEmployee({ is_active: 1 }); setIsModalOpen(true); }}
+              className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all whitespace-nowrap"
+            >
+              <Plus size={18} /> Add Employee
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-[#141414]/10 overflow-hidden shadow-sm">
@@ -490,34 +528,51 @@ function EmployeeManagement({ employees, onUpdate }: { employees: Employee[], on
             </tr>
           </thead>
           <tbody className="divide-y divide-[#141414]/5">
-            {filteredEmployees.map((emp) => (
-              <tr key={emp.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
-                <td className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
-                      {emp.name.charAt(0)}
-                    </div>
-                    <span className="font-medium">{emp.name}</span>
-                  </div>
-                </td>
-                <td className="p-4 text-sm font-mono">{emp.passport_number}</td>
-                <td className="p-4 text-sm">{emp.visa_details}</td>
-                <td className="p-4 text-sm">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${new Date(emp.visa_expiry) < new Date() ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                    {emp.visa_expiry}
-                  </span>
-                </td>
-                <td className="p-4 text-sm">{emp.insurance_expiry}</td>
-                <td className="p-4 text-right">
-                  <button 
-                    onClick={() => { setEditingEmployee(emp); setIsModalOpen(true); }}
-                    className="text-[#141414]/40 hover:text-[#141414] transition-colors"
-                  >
-                    Edit
-                  </button>
+            {filteredEmployees.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-12 text-center text-[#141414]/30 italic">
+                  No {viewMode} employees found.
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredEmployees.map((emp) => (
+                <tr key={emp.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${emp.is_active ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                        {emp.name.charAt(0)}
+                      </div>
+                      <span className={`font-medium ${!emp.is_active && 'text-gray-400'}`}>{emp.name}</span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-sm font-mono">{emp.passport_number}</td>
+                  <td className="p-4 text-sm">{emp.visa_details}</td>
+                  <td className="p-4 text-sm">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${new Date(emp.visa_expiry) < new Date() ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {emp.visa_expiry}
+                    </span>
+                  </td>
+                  <td className="p-4 text-sm">{emp.insurance_expiry}</td>
+                  <td className="p-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button 
+                        onClick={() => { setEditingEmployee(emp); setIsModalOpen(true); }}
+                        className="text-[#141414]/40 hover:text-[#141414] transition-colors text-sm font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => toggleStatus(emp)}
+                        className={`p-1.5 rounded-lg transition-all ${emp.is_active ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                        title={emp.is_active ? "Move to Old Data" : "Reactivate Employee"}
+                      >
+                        {emp.is_active ? <UserMinus size={16} /> : <UserCheck size={16} />}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -646,51 +701,75 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
     onUpdate();
   };
 
+  const groupedAttendance = attendance.reduce((acc, record) => {
+    if (!acc[record.date]) acc[record.date] = [];
+    acc[record.date].push(record);
+    return acc;
+  }, {} as Record<string, AttendanceRecord[]>);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-lg">Work Log & Attendance</h3>
+        <h3 className="font-bold text-lg">Daily Attendance Logs</h3>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all"
+          className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all shadow-sm"
         >
-          <Plus size={18} /> Log Attendance
+          <Plus size={18} /> Log New Attendance
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-[#141414]/10 overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#F5F5F4] border-b border-[#141414]/10">
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Date</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Employee</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Role</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Hours</th>
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-[#141414]/50">Location</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#141414]/5">
-            {attendance.map((record) => (
-              <tr key={record.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
-                <td className="p-4 text-sm font-medium">{record.date}</td>
-                <td className="p-4 text-sm">{record.employee_name}</td>
-                <td className="p-4 text-sm">
-                  <span className="px-2 py-1 bg-[#141414]/5 rounded-lg text-xs font-medium">
-                    {record.role || 'General'}
-                  </span>
-                </td>
-                <td className="p-4 text-sm font-bold flex items-center gap-2">
-                  <Clock size={14} className="text-[#141414]/30" />
-                  {record.hours_worked} hrs
-                </td>
-                <td className="p-4 text-sm flex items-center gap-2">
-                  <MapPin size={14} className="text-[#141414]/30" />
-                  {record.location}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-8">
+        {Object.keys(groupedAttendance).length === 0 ? (
+          <div className="bg-white p-12 rounded-2xl border border-dashed border-[#141414]/20 text-center text-[#141414]/30 italic">
+            No attendance records found.
+          </div>
+        ) : (
+          Object.entries(groupedAttendance).sort((a, b) => b[0].localeCompare(a[0])).map(([date, records]) => (
+            <div key={date} className="space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="h-[1px] flex-1 bg-[#141414]/10"></div>
+                <span className="text-xs font-black uppercase tracking-widest text-[#141414]/40 bg-[#F5F5F4] px-3 py-1 rounded-full border border-[#141414]/5">
+                  {new Date(date).toLocaleDateString('default', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </span>
+                <div className="h-[1px] flex-1 bg-[#141414]/10"></div>
+              </div>
+              
+              <div className="bg-white rounded-2xl border border-[#141414]/10 overflow-hidden shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F5F5F4]/50 border-b border-[#141414]/10">
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Employee</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Role</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Hours</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Location</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#141414]/5">
+                    {records.map((record) => (
+                      <tr key={record.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
+                        <td className="p-4 text-sm font-medium">{record.employee_name}</td>
+                        <td className="p-4 text-sm">
+                          <span className="px-2 py-1 bg-[#141414]/5 rounded-lg text-[10px] font-bold uppercase tracking-tight">
+                            {record.role || 'General'}
+                          </span>
+                        </td>
+                        <td className="p-4 text-sm font-bold flex items-center gap-2">
+                          <Clock size={14} className="text-[#141414]/30" />
+                          {record.hours_worked} hrs
+                        </td>
+                        <td className="p-4 text-sm text-[#141414]/60 flex items-center gap-2">
+                          <MapPin size={14} className="text-[#141414]/30" />
+                          {record.location}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <AnimatePresence>
@@ -717,7 +796,7 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                     onChange={e => setNewRecord({...newRecord, employee_id: Number(e.target.value)})}
                   >
                     <option value="">Select Employee</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {employees.filter(e => e.is_active).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -877,6 +956,7 @@ function HoursTracker() {
 function PayrollManagement({ employees, payments, onUpdate }: { employees: Employee[], payments: SalaryPayment[], onUpdate: () => void }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<SalaryPayment | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [newPayment, setNewPayment] = useState<Partial<SalaryPayment>>({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -896,6 +976,28 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
 
   const generatePayslip = (payment: SalaryPayment) => {
     setSelectedPayment(payment);
+  };
+
+  const downloadPDF = async () => {
+    const element = document.getElementById('payslip-content');
+    if (!element) return;
+    
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(element, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Payslip_${selectedPayment?.employee_name}_${selectedPayment?.month}_${selectedPayment?.year}.pdf`);
+    } catch (error) {
+      console.error("PDF generation failed", error);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -970,7 +1072,7 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
                     }}
                   >
                     <option value="">Select Employee</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {employees.filter(e => e.is_active).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1026,58 +1128,68 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl p-8"
             >
-              <div className="flex justify-between items-start border-b-2 border-[#141414] pb-6 mb-6">
-                <div>
-                  <h2 className="text-2xl font-black uppercase tracking-tighter">STM Engineering</h2>
-                  <p className="text-xs text-[#141414]/50">123 Engineering Way, Singapore 123456</p>
-                </div>
-                <div className="text-right">
-                  <h3 className="text-xl font-bold uppercase">Payslip</h3>
-                  <p className="text-sm font-mono text-[#141414]/50">#{selectedPayment.id.toString().padStart(6, '0')}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-8 mb-8">
-                <div>
-                  <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Employee Details</p>
-                  <p className="font-bold text-lg">{selectedPayment.employee_name}</p>
-                  <p className="text-sm text-[#141414]/60">Period: {selectedPayment.month}/{selectedPayment.year}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Payment Date</p>
-                  <p className="font-bold">{selectedPayment.payment_date}</p>
-                </div>
-              </div>
-
-              <div className="border border-[#141414]/10 rounded-2xl overflow-hidden mb-8">
-                <div className="bg-[#F5F5F4] p-4 flex justify-between font-bold text-xs uppercase tracking-wider">
-                  <span>Description</span>
-                  <span>Amount (SGD)</span>
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span>Basic Salary</span>
-                    <span>{selectedPayment.amount.toFixed(2)}</span>
+              <div id="payslip-content" className="bg-white p-4">
+                <div className="flex justify-between items-start border-b-2 border-[#141414] pb-6 mb-6">
+                  <div>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter">STM Engineering</h2>
+                    <p className="text-xs text-[#141414]/50">123 Engineering Way, Singapore 123456</p>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Allowances</span>
-                    <span>0.00</span>
-                  </div>
-                  <div className="flex justify-between text-sm text-red-500">
-                    <span>Deductions</span>
-                    <span>(0.00)</span>
+                  <div className="text-right">
+                    <h3 className="text-xl font-bold uppercase">Payslip</h3>
+                    <p className="text-sm font-mono text-[#141414]/50">#{selectedPayment.id.toString().padStart(6, '0')}</p>
                   </div>
                 </div>
-                <div className="bg-[#141414] text-white p-4 flex justify-between font-bold">
-                  <span>NET PAYABLE</span>
-                  <span>SGD {selectedPayment.amount.toFixed(2)}</span>
-                </div>
-              </div>
 
-              <div className="flex justify-between items-end">
+                <div className="grid grid-cols-2 gap-8 mb-8">
+                  <div>
+                    <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Employee Details</p>
+                    <p className="font-bold text-lg">{selectedPayment.employee_name}</p>
+                    <p className="text-sm text-[#141414]/60">Period: {selectedPayment.month}/{selectedPayment.year}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Payment Date</p>
+                    <p className="font-bold">{selectedPayment.payment_date}</p>
+                  </div>
+                </div>
+
+                <div className="border border-[#141414]/10 rounded-2xl overflow-hidden mb-8">
+                  <div className="bg-[#F5F5F4] p-4 flex justify-between font-bold text-xs uppercase tracking-wider">
+                    <span>Description</span>
+                    <span>Amount (SGD)</span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span>Basic Salary</span>
+                      <span>{selectedPayment.amount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Allowances</span>
+                      <span>0.00</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-red-500">
+                      <span>Deductions</span>
+                      <span>(0.00)</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#141414] text-white p-4 flex justify-between font-bold">
+                    <span>NET PAYABLE</span>
+                    <span>SGD {selectedPayment.amount.toFixed(2)}</span>
+                  </div>
+                </div>
+
                 <div className="text-[10px] text-[#141414]/40 italic">
                   This is a computer-generated payslip and does not require a signature.
                 </div>
+              </div>
+
+              <div className="flex justify-between items-center mt-8 pt-6 border-t border-[#141414]/5">
+                <button 
+                  onClick={downloadPDF}
+                  disabled={isDownloading}
+                  className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50"
+                >
+                  <Download size={18} /> {isDownloading ? 'Generating...' : 'Download PDF'}
+                </button>
                 <button 
                   onClick={() => setSelectedPayment(null)}
                   className="bg-[#141414] text-white px-6 py-2 rounded-xl font-bold text-sm"

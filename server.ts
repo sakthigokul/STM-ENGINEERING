@@ -20,7 +20,8 @@ db.exec(`
     insurance_expiry DATE,
     visa_details TEXT,
     visa_expiry DATE,
-    base_salary REAL DEFAULT 0
+    base_salary REAL DEFAULT 0,
+    is_active INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS attendance (
@@ -33,18 +34,6 @@ db.exec(`
     FOREIGN KEY(employee_id) REFERENCES employees(id)
   );
 
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT
-  );
-
-  -- Ensure role column exists (for existing databases)
-  -- SQLite doesn't support IF NOT EXISTS for ADD COLUMN easily in a script, 
-  -- but we can try to add it and ignore error or check pragma.
-  -- For this environment, we can just try to add it.
-  -- ALTER TABLE attendance ADD COLUMN role TEXT; 
-
   CREATE TABLE IF NOT EXISTS salary_payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER,
@@ -54,7 +43,27 @@ db.exec(`
     year INTEGER,
     FOREIGN KEY(employee_id) REFERENCES employees(id)
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+  );
 `);
+
+// Migration: Add is_active if it doesn't exist
+try {
+  db.prepare("ALTER TABLE employees ADD COLUMN is_active INTEGER DEFAULT 1").run();
+} catch (e) {
+  // Column already exists or other error
+}
+
+// Migration: Add role if it doesn't exist
+try {
+  db.prepare("ALTER TABLE attendance ADD COLUMN role TEXT").run();
+} catch (e) {
+  // Column already exists
+}
 
 // Seed data if empty
 const employeeCount = db.prepare("SELECT COUNT(*) as count FROM employees").get() as { count: number };
@@ -92,27 +101,36 @@ async function startServer() {
 
   // API Routes
   app.get("/api/employees", (req, res) => {
-    const employees = db.prepare("SELECT * FROM employees").all();
+    const { active } = req.query;
+    let query = "SELECT * FROM employees";
+    const params: any[] = [];
+    
+    if (active !== undefined) {
+      query += " WHERE is_active = ?";
+      params.push(active === 'true' ? 1 : 0);
+    }
+    
+    const employees = db.prepare(query).all(...params);
     res.json(employees);
   });
 
   app.post("/api/employees", (req, res) => {
     const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary } = req.body;
     const info = db.prepare(`
-      INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO employees (name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary);
     res.json({ id: info.lastInsertRowid });
   });
 
   app.put("/api/employees/:id", (req, res) => {
     const { id } = req.params;
-    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary } = req.body;
+    const { name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active } = req.body;
     db.prepare(`
       UPDATE employees 
-      SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?
+      SET name = ?, passport_number = ?, address = ?, insurance_details = ?, insurance_expiry = ?, visa_details = ?, visa_expiry = ?, base_salary = ?, is_active = ?
       WHERE id = ?
-    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, id);
+    `).run(name, passport_number, address, insurance_details, insurance_expiry, visa_details, visa_expiry, base_salary, is_active ?? 1, id);
     res.json({ success: true });
   });
 
