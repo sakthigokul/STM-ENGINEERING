@@ -219,19 +219,26 @@ async function startServer() {
   });
 
   app.post("/api/attendance/clock-in", (req, res) => {
-    const { employee_id, date, location, role, clock_in_time, before_image, work_description } = req.body;
-    const info = db.prepare(`
-      INSERT INTO attendance (employee_id, date, location, role, clock_in_time, before_image, work_description, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-    `).run(employee_id, date, location, role, clock_in_time, before_image, work_description);
-    res.json({ id: info.lastInsertRowid });
+    console.log("Clock-in request:", req.body);
+    try {
+      const { employee_id, date, location, role, clock_in_time, before_image, work_description } = req.body;
+      const info = db.prepare(`
+        INSERT INTO attendance (employee_id, date, location, role, clock_in_time, before_image, work_description, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+      `).run(employee_id, date, location, role, clock_in_time, before_image, work_description);
+      console.log("Clock-in successful, ID:", info.lastInsertRowid);
+      res.json({ id: info.lastInsertRowid });
+    } catch (error) {
+      console.error("Clock-in failed:", error);
+      res.status(500).json({ error: "Failed to clock in" });
+    }
   });
 
   app.post("/api/attendance/clock-out", (req, res) => {
     const { id, clock_out_time, after_image, hours_worked } = req.body;
     db.prepare(`
       UPDATE attendance 
-      SET clock_out_time = ?, after_image = ?, hours_worked = ?
+      SET clock_out_time = ?, after_image = ?, hours_worked = ?, status = 'pending'
       WHERE id = ?
     `).run(clock_out_time, after_image, hours_worked, id);
     res.json({ success: true });
@@ -282,7 +289,7 @@ async function startServer() {
       SELECT e.name as employee_name, SUM(a.hours_worked) as total_hours
       FROM attendance a
       JOIN employees e ON a.employee_id = e.id
-      WHERE strftime('%m', a.date) = ? AND strftime('%Y', a.date) = ? AND e.is_active = 1
+      WHERE strftime('%m', a.date) = ? AND strftime('%Y', a.date) = ? AND e.is_active = 1 AND a.status = 'approved'
       GROUP BY e.id
     `).all(month, year);
     res.json(stats);

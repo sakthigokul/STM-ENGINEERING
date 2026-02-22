@@ -158,6 +158,13 @@ export default function App() {
             <p className="text-[#141414]/50 text-sm">Manage your organization's human resources.</p>
           </div>
           <div className="flex items-center gap-4">
+            <button 
+              onClick={fetchData}
+              className="p-2 text-[#141414]/40 hover:text-[#141414] transition-colors"
+              title="Refresh Data"
+            >
+              <History size={20} className={loading ? "animate-spin" : ""} />
+            </button>
             <div className="relative">
               <Bell className="text-[#141414]/60 cursor-pointer hover:text-[#141414]" size={24} />
               {notifications.length > 0 && (
@@ -191,7 +198,7 @@ export default function App() {
               {activeTab === 'dashboard' && (
                 user?.role === 'admin' 
                   ? <Dashboard notifications={notifications} employees={employees} attendance={attendance} />
-                  : <EmployeeDashboard user={user} attendance={attendance} onUpdate={fetchData} />
+                  : <EmployeeDashboard user={user} attendance={attendance} invoices={invoices} onUpdate={fetchData} />
               )}
               {activeTab === 'employees' && user?.role === 'admin' && <EmployeeManagement employees={employees} onUpdate={fetchData} />}
               {activeTab === 'attendance' && user?.role === 'admin' && <AttendanceManagement employees={employees} attendance={attendance} onUpdate={fetchData} />}
@@ -224,7 +231,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
 
 // --- Components ---
 
-function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attendance: AttendanceRecord[], onUpdate: () => void }) {
+function EmployeeDashboard({ user, attendance, invoices, onUpdate }: { user: User, attendance: AttendanceRecord[], invoices: Invoice[], onUpdate: () => void }) {
   const [isClockingIn, setIsClockingIn] = useState(false);
   const [isClockingOut, setIsClockingOut] = useState(false);
   const [location, setLocation] = useState('');
@@ -233,7 +240,19 @@ function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attenda
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const activeRecord = attendance.find(a => a.employee_id === user.id && a.clock_in_time && !a.clock_out_time);
+  const activeRecord = attendance.find(a => a.employee_id === user.id && a.clock_in_time && !a.clock_out_time && a.status === 'approved');
+  const pendingRecord = attendance.find(a => a.employee_id === user.id && a.status === 'pending');
+
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  const monthlyHours = attendance
+    .filter(a => {
+      const d = new Date(a.date);
+      return (d.getMonth() + 1) === currentMonth && d.getFullYear() === currentYear && a.status === 'approved';
+    })
+    .reduce((sum, a) => sum + (a.hours_worked || 0), 0);
+
+  const pendingInvoices = invoices.filter(i => i.status === 'pending').length;
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -271,6 +290,7 @@ function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attenda
       setLocation('');
       setRole('');
       setDescription('');
+      alert("Clock-in submitted for approval!");
       onUpdate();
     } catch (err) {
       console.error(err);
@@ -304,6 +324,7 @@ function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attenda
       });
       setIsClockingOut(false);
       setImage(null);
+      alert("Clock-out submitted for approval!");
       onUpdate();
     } catch (err) {
       console.error(err);
@@ -314,13 +335,72 @@ function EmployeeDashboard({ user, attendance, onUpdate }: { user: User, attenda
 
   return (
     <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-3xl border border-[#141414]/10 shadow-sm">
+          <p className="text-[10px] font-bold text-[#141414]/30 uppercase tracking-widest mb-1">Monthly Hours</p>
+          <div className="flex items-end gap-2">
+            <h4 className="text-3xl font-black">{monthlyHours.toFixed(1)}h</h4>
+            <p className="text-xs text-emerald-600 font-bold mb-1">Approved</p>
+          </div>
+          <div className="mt-4 h-1.5 bg-[#F5F5F4] rounded-full overflow-hidden">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min((monthlyHours / 200) * 100, 100)}%` }}
+              className="h-full bg-[#141414]"
+            />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-[#141414]/10 shadow-sm">
+          <p className="text-[10px] font-bold text-[#141414]/30 uppercase tracking-widest mb-1">Current Status</p>
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${activeRecord ? 'bg-emerald-500 animate-pulse' : pendingRecord ? 'bg-amber-500 animate-pulse' : 'bg-gray-300'}`}></div>
+            <h4 className="text-lg font-bold">
+              {activeRecord ? 'Clocked In' : pendingRecord ? 'Pending Approval' : 'Off Duty'}
+            </h4>
+          </div>
+          <p className="text-xs text-[#141414]/50 mt-1">
+            {activeRecord ? `Since ${activeRecord.clock_in_time}` : 'Ready for next shift'}
+          </p>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-[#141414]/10 shadow-sm">
+          <p className="text-[10px] font-bold text-[#141414]/30 uppercase tracking-widest mb-1">Pending Invoices</p>
+          <h4 className="text-3xl font-black">{pendingInvoices}</h4>
+          <p className="text-xs text-[#141414]/50 mt-1">Waiting for approval</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="bg-white p-8 rounded-[2.5rem] border border-[#141414]/10 shadow-sm">
           <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
             <Clock size={24} /> Attendance Status
           </h3>
           
-          {activeRecord ? (
+          {pendingRecord ? (
+            <div className="space-y-6">
+              <div className="p-6 bg-amber-50 rounded-3xl border border-amber-100">
+                <p className="text-amber-800 font-bold flex items-center gap-2">
+                  <Clock size={18} className="animate-pulse" /> 
+                  {pendingRecord.clock_out_time ? 'Clock Out Pending Approval' : 'Clock In Pending Approval'}
+                </p>
+                <p className="text-sm text-amber-600 mt-1">
+                  Submitted at {pendingRecord.clock_out_time || pendingRecord.clock_in_time}. Please wait for admin approval.
+                </p>
+              </div>
+              <div className="p-4 bg-[#F5F5F4] rounded-2xl border border-[#141414]/5">
+                <p className="text-[10px] font-bold text-[#141414]/30 uppercase mb-2">Details Submitted</p>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="text-[#141414]/50">Location</p>
+                    <p className="font-bold">{pendingRecord.location}</p>
+                  </div>
+                  <div>
+                    <p className="text-[#141414]/50">Role</p>
+                    <p className="font-bold">{pendingRecord.role}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeRecord ? (
             <div className="space-y-6">
               <div className="p-6 bg-emerald-50 rounded-3xl border border-emerald-100">
                 <p className="text-emerald-800 font-bold flex items-center gap-2">
@@ -499,6 +579,7 @@ function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices:
     description: '',
     date: new Date().toISOString().split('T')[0]
   });
+  const [isDownloading, setIsDownloading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
@@ -529,33 +610,50 @@ function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices:
     }
   };
 
-  const downloadInvoice = async (invoice: Invoice) => {
-    setSelectedInvoice(invoice);
-    // Small delay for modal to render
-    setTimeout(async () => {
-      const element = document.getElementById('invoice-content');
-      if (!element) return;
+  const downloadInvoice = async () => {
+    const element = document.getElementById('invoice-print-content');
+    if (!element) {
+      alert("Invoice content not found. Please try again.");
+      return;
+    }
+    
+    setIsDownloading(true);
+    try {
+      // Ensure images are loaded
+      const images = element.getElementsByTagName('img');
+      await Promise.all(Array.from(images).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+      }));
+
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      try {
-        const canvas = await html2canvas(element, { 
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff"
-        });
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`Invoice_${invoice.customer_name}_${invoice.date}.pdf`);
-      } catch (error) {
-        console.error("Invoice generation failed", error);
-      } finally {
-        setSelectedInvoice(null);
-      }
-    }, 500);
+      const canvas = await html2canvas(element, { 
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Invoice_${selectedInvoice?.customer_name || 'Export'}_${selectedInvoice?.date || 'Date'}.pdf`);
+    } catch (error) {
+      console.error("Invoice generation failed", error);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -608,9 +706,9 @@ function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices:
                   )}
                   {inv.status === 'approved' && (
                     <button 
-                      onClick={() => downloadInvoice(inv)}
+                      onClick={() => setSelectedInvoice(inv)}
                       className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                      title="Download"
+                      title="Preview & Download"
                     >
                       <Download size={18} />
                     </button>
@@ -680,10 +778,57 @@ function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices:
         )}
       </AnimatePresence>
 
+      {/* Invoice Preview Modal */}
+      <AnimatePresence>
+        {selectedInvoice && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl p-8"
+            >
+              <div className="p-8 bg-[#F5F5F4] rounded-2xl border border-[#141414]/5">
+                <div className="flex justify-between items-start border-b border-[#141414]/10 pb-4 mb-4">
+                  <div>
+                    <h2 className="text-xl font-bold uppercase tracking-tight">STM Engineering</h2>
+                    <p className="text-xs text-[#141414]/50">Invoice Preview</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold">{selectedInvoice.customer_name}</p>
+                    <p className="text-xs text-[#141414]/50">{selectedInvoice.date}</p>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Total Amount</span>
+                  <span className="text-xl font-black">SGD {selectedInvoice.amount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center mt-8 pt-6 border-t border-[#141414]/5">
+                <button 
+                  onClick={downloadInvoice}
+                  disabled={isDownloading}
+                  className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50"
+                >
+                  <Download size={18} /> {isDownloading ? 'Generating...' : 'Download PDF'}
+                </button>
+                <button 
+                  onClick={() => setSelectedInvoice(null)}
+                  className="bg-[#141414] text-white px-6 py-2 rounded-xl font-bold text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Hidden Invoice for PDF Generation */}
       {selectedInvoice && (
-        <div className="fixed -left-[9999px] top-0">
-          <div id="invoice-content" style={{ width: '210mm', minHeight: '297mm', backgroundColor: '#ffffff', color: '#000000', padding: '20mm' }}>
+        <div className="absolute opacity-0 pointer-events-none" style={{ top: '-10000px', left: '0' }}>
+          <div id="invoice-print-content" style={{ width: '210mm', minHeight: '297mm', backgroundColor: '#ffffff', color: '#000000', padding: '20mm', fontFamily: 'Arial, sans-serif' }}>
             <div className="flex justify-between items-start border-b-4 border-black pb-8 mb-8">
               <div>
                 <h1 className="text-4xl font-black uppercase tracking-tighter">STM Engineering</h1>
@@ -876,14 +1021,16 @@ function Dashboard({ notifications, employees, attendance }: { notifications: Ex
   const activeEmployeeIds = new Set(activeEmployees.map(e => e.id));
   const activeAttendance = attendance.filter(a => activeEmployeeIds.has(a.employee_id));
   const activeToday = activeAttendance.filter(a => a.date === today).length;
+  const pendingAttendance = activeAttendance.filter(a => a.status === 'pending').length;
 
   return (
     <div className="space-y-8">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard title="Total Employees" value={activeEmployees.length} icon={<Users className="text-blue-500" />} />
         <StatCard title="Active Today" value={activeToday} icon={<Calendar className="text-emerald-500" />} />
-        <StatCard title="Expiry Alerts" value={notifications.length} icon={<AlertTriangle className="text-amber-500" />} color={notifications.length > 0 ? 'bg-amber-50' : ''} />
+        <StatCard title="Pending Approval" value={pendingAttendance} icon={<Clock className="text-amber-500" />} color={pendingAttendance > 0 ? 'bg-amber-50' : ''} />
+        <StatCard title="Expiry Alerts" value={notifications.length} icon={<AlertTriangle className="text-red-500" />} color={notifications.length > 0 ? 'bg-red-50' : ''} />
       </div>
 
       {/* Notifications Section */}
@@ -931,7 +1078,9 @@ function Dashboard({ notifications, employees, attendance }: { notifications: Ex
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold">{record.hours_worked} hrs</p>
+                  <p className={`text-sm font-bold ${record.status === 'pending' ? 'text-amber-600' : ''}`}>
+                    {record.hours_worked ? `${record.hours_worked} hrs` : (record.status === 'pending' ? 'Pending' : 'In Progress')}
+                  </p>
                   <p className="text-[10px] text-[#141414]/50">{record.date}</p>
                 </div>
               </div>
@@ -1368,9 +1517,11 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                             {record.role || 'General'}
                           </span>
                         </td>
-                        <td className="p-4 text-sm font-bold flex items-center gap-2">
-                          <Clock size={14} className="text-[#141414]/30" />
-                          {record.hours_worked} hrs
+                        <td className="p-4 text-sm font-bold">
+                          <div className="flex items-center gap-2">
+                            <Clock size={14} className="text-[#141414]/30" />
+                            {record.hours_worked ? `${record.hours_worked} hrs` : (record.clock_out_time ? 'Pending Calc' : 'In Progress')}
+                          </div>
                         </td>
                         <td className="p-4 text-sm text-[#141414]/60">
                           <div className="flex items-center gap-2">
@@ -1401,14 +1552,14 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-3">
                             <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
-                              record.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                              record.status === 'approved' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600 animate-pulse'
                             }`}>
                               {record.status}
                             </span>
                             {record.status === 'pending' && (
                               <button 
                                 onClick={() => handleApprove(record.id)}
-                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                className="p-1.5 bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg transition-all shadow-sm"
                                 title="Approve Attendance"
                               >
                                 <CheckCircle size={16} />
