@@ -73,7 +73,7 @@ db.exec(`
 // Migration: Add new columns if they don't exist
 const migrations = [
   "ALTER TABLE employees ADD COLUMN is_active INTEGER DEFAULT 1",
-  "ALTER TABLE employees ADD COLUMN username TEXT UNIQUE",
+  "ALTER TABLE employees ADD COLUMN username TEXT",
   "ALTER TABLE employees ADD COLUMN password TEXT",
   "ALTER TABLE attendance ADD COLUMN role TEXT",
   "ALTER TABLE attendance ADD COLUMN clock_in_time TEXT",
@@ -81,13 +81,19 @@ const migrations = [
   "ALTER TABLE attendance ADD COLUMN before_image TEXT",
   "ALTER TABLE attendance ADD COLUMN after_image TEXT",
   "ALTER TABLE attendance ADD COLUMN status TEXT DEFAULT 'pending'",
-  "ALTER TABLE attendance ADD COLUMN work_description TEXT"
+  "ALTER TABLE attendance ADD COLUMN work_description TEXT",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_username ON employees(username)"
 ];
 
 migrations.forEach(m => {
   try {
     db.prepare(m).run();
-  } catch (e) {}
+    console.log(`Migration successful: ${m}`);
+  } catch (e: any) {
+    if (!e.message.includes("duplicate column name") && !e.message.includes("already exists")) {
+      console.error(`Migration failed: ${m}`, e.message);
+    }
+  }
 });
 
 // Seed data if empty
