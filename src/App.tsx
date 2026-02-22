@@ -24,7 +24,7 @@ import {
   History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { Employee, AttendanceRecord, SalaryPayment, ExpiryNotification } from './types';
 
@@ -334,13 +334,16 @@ function LoginPage({ onLogin }: { onLogin: (user: { username: string }) => void 
 
 function Dashboard({ notifications, employees, attendance }: { notifications: ExpiryNotification[], employees: Employee[], attendance: AttendanceRecord[] }) {
   const today = new Date().toISOString().split('T')[0];
-  const activeToday = attendance.filter(a => a.date === today).length;
+  const activeEmployees = employees.filter(e => e.is_active === 1);
+  const activeEmployeeIds = new Set(activeEmployees.map(e => e.id));
+  const activeAttendance = attendance.filter(a => activeEmployeeIds.has(a.employee_id));
+  const activeToday = activeAttendance.filter(a => a.date === today).length;
 
   return (
     <div className="space-y-8">
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Total Employees" value={employees.length} icon={<Users className="text-blue-500" />} />
+        <StatCard title="Total Employees" value={activeEmployees.length} icon={<Users className="text-blue-500" />} />
         <StatCard title="Active Today" value={activeToday} icon={<Calendar className="text-emerald-500" />} />
         <StatCard title="Expiry Alerts" value={notifications.length} icon={<AlertTriangle className="text-amber-500" />} color={notifications.length > 0 ? 'bg-amber-50' : ''} />
       </div>
@@ -378,7 +381,7 @@ function Dashboard({ notifications, employees, attendance }: { notifications: Ex
             <Clock size={18} /> Recent Attendance
           </h3>
           <div className="space-y-4">
-            {attendance.slice(0, 5).map((record, idx) => (
+            {activeAttendance.slice(0, 5).map((record, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-[#F5F5F4]/50">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#141414]/10 flex items-center justify-center text-xs font-bold">
@@ -403,7 +406,7 @@ function Dashboard({ notifications, employees, attendance }: { notifications: Ex
             <Users size={18} /> Newest Employees
           </h3>
           <div className="space-y-4">
-            {employees.slice(-5).reverse().map((emp, idx) => (
+            {activeEmployees.slice(-5).reverse().map((emp, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-[#F5F5F4]/50">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
@@ -701,7 +704,11 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
     onUpdate();
   };
 
-  const groupedAttendance = attendance.reduce((acc, record) => {
+  const activeEmployees = employees.filter(e => e.is_active === 1);
+  const activeEmployeeIds = new Set(activeEmployees.map(e => e.id));
+  const activeAttendance = attendance.filter(a => activeEmployeeIds.has(a.employee_id));
+
+  const groupedAttendance = activeAttendance.reduce((acc, record) => {
     if (!acc[record.date]) acc[record.date] = [];
     acc[record.date].push(record);
     return acc;
@@ -984,7 +991,16 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
     
     setIsDownloading(true);
     try {
-      const canvas = await html2canvas(element, { scale: 2 });
+      // Small delay to ensure rendering is complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const canvas = await html2canvas(element, { 
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+        backgroundColor: "#ffffff"
+      });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(imgData);
@@ -995,10 +1011,15 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
       pdf.save(`Payslip_${selectedPayment?.employee_name}_${selectedPayment?.month}_${selectedPayment?.year}.pdf`);
     } catch (error) {
       console.error("PDF generation failed", error);
+      alert("Failed to generate PDF. Please try again.");
     } finally {
       setIsDownloading(false);
     }
   };
+
+  const activeEmployees = employees.filter(e => e.is_active === 1);
+  const activeEmployeeIds = new Set(activeEmployees.map(e => e.id));
+  const activePayments = payments.filter(p => activeEmployeeIds.has(p.employee_id));
 
   return (
     <div className="space-y-6">
@@ -1024,7 +1045,7 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
             </tr>
           </thead>
           <tbody className="divide-y divide-[#141414]/5">
-            {payments.map((pay) => (
+            {activePayments.map((pay) => (
               <tr key={pay.id} className="hover:bg-[#F5F5F4]/30 transition-colors">
                 <td className="p-4 text-sm">{pay.payment_date}</td>
                 <td className="p-4 text-sm font-medium">{pay.employee_name}</td>
@@ -1128,56 +1149,56 @@ function PayrollManagement({ employees, payments, onUpdate }: { employees: Emplo
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl p-8"
             >
-              <div id="payslip-content" className="bg-white p-4">
-                <div className="flex justify-between items-start border-b-2 border-[#141414] pb-6 mb-6">
+              <div id="payslip-content" style={{ backgroundColor: '#ffffff', color: '#000000' }} className="p-8">
+                <div className="flex justify-between items-start border-b-2 border-[#000000] pb-6 mb-6">
                   <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter">STM Engineering</h2>
-                    <p className="text-xs text-[#141414]/50">123 Engineering Way, Singapore 123456</p>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter text-[#000000]">STM Engineering</h2>
+                    <p className="text-xs text-[#666666]">123 Engineering Way, Singapore 123456</p>
                   </div>
                   <div className="text-right">
-                    <h3 className="text-xl font-bold uppercase">Payslip</h3>
-                    <p className="text-sm font-mono text-[#141414]/50">#{selectedPayment.id.toString().padStart(6, '0')}</p>
+                    <h3 className="text-xl font-bold uppercase text-[#000000]">Payslip</h3>
+                    <p className="text-sm font-mono text-[#999999]">#{selectedPayment.id.toString().padStart(6, '0')}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-8 mb-8">
                   <div>
-                    <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Employee Details</p>
-                    <p className="font-bold text-lg">{selectedPayment.employee_name}</p>
-                    <p className="text-sm text-[#141414]/60">Period: {selectedPayment.month}/{selectedPayment.year}</p>
+                    <p className="text-[10px] font-bold text-[#999999] uppercase mb-1">Employee Details</p>
+                    <p className="font-bold text-lg text-[#000000]">{selectedPayment.employee_name}</p>
+                    <p className="text-sm text-[#333333]">Period: {selectedPayment.month}/{selectedPayment.year}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-bold text-[#141414]/40 uppercase mb-1">Payment Date</p>
-                    <p className="font-bold">{selectedPayment.payment_date}</p>
+                    <p className="text-[10px] font-bold text-[#999999] uppercase mb-1">Payment Date</p>
+                    <p className="font-bold text-[#000000]">{selectedPayment.payment_date}</p>
                   </div>
                 </div>
 
-                <div className="border border-[#141414]/10 rounded-2xl overflow-hidden mb-8">
-                  <div className="bg-[#F5F5F4] p-4 flex justify-between font-bold text-xs uppercase tracking-wider">
+                <div className="border border-[#eeeeee] rounded-2xl overflow-hidden mb-8">
+                  <div className="bg-[#f5f5f5] p-4 flex justify-between font-bold text-xs uppercase tracking-wider text-[#000000]">
                     <span>Description</span>
                     <span>Amount (SGD)</span>
                   </div>
                   <div className="p-4 space-y-3">
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-sm text-[#000000]">
                       <span>Basic Salary</span>
                       <span>{selectedPayment.amount.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between text-sm text-[#000000]">
                       <span>Allowances</span>
                       <span>0.00</span>
                     </div>
-                    <div className="flex justify-between text-sm text-red-500">
+                    <div className="flex justify-between text-sm text-[#ff0000]">
                       <span>Deductions</span>
                       <span>(0.00)</span>
                     </div>
                   </div>
-                  <div className="bg-[#141414] text-white p-4 flex justify-between font-bold">
+                  <div className="bg-[#000000] text-[#ffffff] p-4 flex justify-between font-bold">
                     <span>NET PAYABLE</span>
                     <span>SGD {selectedPayment.amount.toFixed(2)}</span>
                   </div>
                 </div>
 
-                <div className="text-[10px] text-[#141414]/40 italic">
+                <div className="text-[10px] text-[#999999] italic">
                   This is a computer-generated payslip and does not require a signature.
                 </div>
               </div>

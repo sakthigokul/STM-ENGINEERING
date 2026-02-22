@@ -159,7 +159,7 @@ async function startServer() {
       SELECT e.name as employee_name, SUM(a.hours_worked) as total_hours
       FROM attendance a
       JOIN employees e ON a.employee_id = e.id
-      WHERE strftime('%m', a.date) = ? AND strftime('%Y', a.date) = ?
+      WHERE strftime('%m', a.date) = ? AND strftime('%Y', a.date) = ? AND e.is_active = 1
       GROUP BY e.id
     `).all(month, year);
     res.json(stats);
@@ -195,13 +195,13 @@ async function startServer() {
     const visaExpiries = db.prepare(`
       SELECT id, name, visa_expiry as expiry_date, 'Visa' as type
       FROM employees 
-      WHERE visa_expiry <= ? AND visa_expiry >= ?
+      WHERE visa_expiry <= ? AND visa_expiry >= ? AND is_active = 1
     `).all(threeDaysLaterStr, todayStr);
 
     const insuranceExpiries = db.prepare(`
       SELECT id, name, insurance_expiry as expiry_date, 'Insurance' as type
       FROM employees 
-      WHERE insurance_expiry <= ? AND insurance_expiry >= ?
+      WHERE insurance_expiry <= ? AND insurance_expiry >= ? AND is_active = 1
     `).all(threeDaysLaterStr, todayStr);
 
     res.json([...visaExpiries, ...insuranceExpiries]);
