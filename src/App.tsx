@@ -35,8 +35,13 @@ import type { Employee, AttendanceRecord, SalaryPayment, ExpiryNotification, Inv
 type Tab = 'dashboard' | 'employees' | 'attendance' | 'payroll' | 'tracker' | 'invoices';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('isLoggedIn') === 'true';
+  });
+  const [user, setUser] = useState<User | null>(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -46,10 +51,18 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isLoggedIn && user) {
+      localStorage.setItem('isLoggedIn', 'true');
+      localStorage.setItem('user', JSON.stringify(user));
+      fetchData();
+    } else {
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('user');
+    }
+  }, [isLoggedIn, user]);
 
   const fetchData = async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const [empRes, attRes, salRes, notRes, invRes] = await Promise.all([
@@ -73,8 +86,18 @@ export default function App() {
   };
 
   if (!isLoggedIn) {
-    return <LoginPage onLogin={(userData) => { setUser(userData); setIsLoggedIn(true); }} />;
+    return <LoginPage onLogin={(userData) => { 
+      setUser(userData); 
+      setIsLoggedIn(true); 
+    }} />;
   }
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUser(null);
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('user');
+  };
 
   return (
     <div className="flex h-screen bg-[#F5F5F4] text-[#141414] font-sans">
@@ -140,7 +163,7 @@ export default function App() {
               </div>
             </div>
             <button 
-              onClick={() => setIsLoggedIn(false)}
+              onClick={handleLogout}
               className="p-2 text-[#141414]/40 hover:text-red-500 transition-colors"
               title="Logout"
             >
@@ -659,7 +682,16 @@ function InvoiceManagement({ user, invoices, onUpdate }: { user: User, invoices:
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-lg">Invoices</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="font-bold text-lg">Invoices</h3>
+          <button 
+            onClick={onUpdate}
+            className="p-2 text-[#141414]/40 hover:text-[#141414] transition-colors"
+            title="Refresh Invoices"
+          >
+            <History size={18} />
+          </button>
+        </div>
         {user.role === 'employee' && (
           <button 
             onClick={() => setIsModalOpen(true)}
@@ -1471,7 +1503,16 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-lg">Daily Attendance Logs</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="font-bold text-lg">Daily Attendance Logs</h3>
+          <button 
+            onClick={onUpdate}
+            className="p-2 text-[#141414]/40 hover:text-[#141414] transition-colors"
+            title="Refresh Logs"
+          >
+            <History size={18} />
+          </button>
+        </div>
         <button 
           onClick={() => setIsModalOpen(true)}
           className="bg-[#141414] text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-[#141414]/90 transition-all shadow-sm"
@@ -1502,6 +1543,7 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                     <tr className="bg-[#F5F5F4]/50 border-b border-[#141414]/10">
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Employee</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Role</th>
+                      <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Times</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Hours</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Location</th>
                       <th className="p-4 text-[10px] font-bold uppercase tracking-wider text-[#141414]/50">Images</th>
