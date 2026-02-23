@@ -1559,6 +1559,12 @@ function AttendanceManagement({ employees, attendance, onUpdate }: { employees: 
                             {record.role || 'General'}
                           </span>
                         </td>
+                        <td className="p-4 text-[10px]">
+                          <div className="flex flex-col">
+                            <span className="text-[#141414]/40 uppercase font-bold">In: {record.clock_in_time}</span>
+                            <span className="text-[#141414]/40 uppercase font-bold">Out: {record.clock_out_time || '--:--'}</span>
+                          </div>
+                        </td>
                         <td className="p-4 text-sm font-bold">
                           <div className="flex items-center gap-2">
                             <Clock size={14} className="text-[#141414]/30" />
